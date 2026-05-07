@@ -23,7 +23,8 @@ services:
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:
-      - ./logs:/app/logs
+      - torrent-cleaner-data:/app/data
+      - torrent-cleaner-logs:/app/logs
     healthcheck:
       test:
         [
@@ -34,3 +35,9 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+volumes:
+  torrent-cleaner-data:
+    name: torrent-cleaner-data
+  torrent-cleaner-logs:
+    name: torrent-cleaner-logs

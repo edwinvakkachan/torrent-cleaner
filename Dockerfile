@@ -9,7 +9,7 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 
-RUN mkdir -p logs && chown -R node:node /app
+RUN mkdir -p data logs && chown -R node:node /app
 
 USER node
 
