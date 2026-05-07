@@ -2,8 +2,13 @@ import Torrent from "../models/Torrent.js";
 import FailedTorrent from "../models/FailedTorrent.js";
 
 import {
+  getTorrentFiles,
   getTorrents
 } from "./qbService.js";
+
+import {
+  processFailedTorrent
+} from "./failedTorrentHandler.js";
 
 import healthScore from "../utils/healthScore.js";
 
@@ -11,13 +16,44 @@ import {
   isUnhealthyDownload
 } from "../utils/downloadEligibility.js";
 
+import {
+  classifyTorrentContent
+} from "../utils/mediaContent.js";
+
 function unixDate(value) {
   return value
     ? new Date(value * 1000)
     : undefined;
 }
 
-function qbitData(torrent) {
+function rrTypeFor(torrent) {
+  const category = (
+    torrent.category ?? ""
+  ).toLowerCase();
+
+  if (
+    category.includes("tv") ||
+    category.includes("sonarr")
+  ) {
+    return "sonarr";
+  }
+
+  return "radarr";
+}
+
+async function getFiles(hash) {
+  try {
+    return await getTorrentFiles(hash);
+  } catch (err) {
+    console.log(err);
+    return [];
+  }
+}
+
+function qbitData(
+  torrent,
+  content
+) {
   return {
     savePath: torrent.save_path,
     contentPath: torrent.content_path,
@@ -32,7 +68,8 @@ function qbitData(torrent) {
     completedOn:
       unixDate(torrent.completion_on),
     ratio: torrent.ratio,
-    availability: torrent.availability
+    availability: torrent.availability,
+    content
   };
 }
 
@@ -44,8 +81,14 @@ export default async function monitor() {
     const score =
       healthScore(torrent);
 
+    const files =
+      await getFiles(torrent.hash);
+
+    const content =
+      classifyTorrentContent(files);
+
     const qbit =
-      qbitData(torrent);
+      qbitData(torrent, content);
 
     await Torrent.findOneAndUpdate(
       {
@@ -81,36 +124,87 @@ export default async function monitor() {
       }
     );
 
-    if (
+    const unsafeContent =
+      content.isInvalid;
+
+    const unhealthyDownload =
       isUnhealthyDownload(
         torrent,
         Number(process.env.MIN_SPEED ?? 200000)
-      )
+      );
+
+    if (
+      unsafeContent ||
+      unhealthyDownload
     ) {
       const exists =
         await FailedTorrent.findOne({
           hash: torrent.hash
         });
 
-      if (!exists) {
-        await FailedTorrent.create({
-          hash: torrent.hash,
+      const reason =
+        unsafeContent
+          ? "Unsafe torrent content"
+          : "Unhealthy torrent";
 
-          name: torrent.name,
+      let failedTorrent;
 
-          state: torrent.state,
+      if (exists) {
+        const wasUnsafe =
+          exists.content?.isInvalid ===
+          true;
 
-          reason:
-            "Unhealthy torrent",
+        exists.state = torrent.state;
+        exists.reason = reason;
+        exists.rrType =
+          rrTypeFor(torrent);
+        exists.qbit = qbit;
+        exists.content = content;
 
-          rrType:
-            torrent.category ===
-            "tv"
-              ? "sonarr"
-              : "radarr",
+        if (
+          unsafeContent &&
+          !wasUnsafe &&
+          exists.status !== "SUCCESS"
+        ) {
+          exists.status = "PENDING";
+          exists.notified = false;
+          exists.retries = 0;
+          exists.lastError = undefined;
+        }
 
-          qbit
-        });
+        await exists.save();
+        failedTorrent = exists;
+      } else {
+        failedTorrent =
+          await FailedTorrent.create({
+            hash: torrent.hash,
+
+            name: torrent.name,
+
+            state: torrent.state,
+
+            reason:
+              reason,
+
+            rrType:
+              rrTypeFor(torrent),
+
+            qbit,
+
+            content
+          });
+      }
+
+      if (
+        unsafeContent &&
+        failedTorrent.status === "PENDING" &&
+        failedTorrent.notified === false &&
+        failedTorrent.retries === 0
+      ) {
+        await processFailedTorrent(
+          failedTorrent,
+          "content-scan"
+        );
       }
     }
   }

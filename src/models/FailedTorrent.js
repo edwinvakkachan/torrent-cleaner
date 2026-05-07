@@ -21,6 +21,9 @@ const failedTorrentSchema =
     blocklist:
       mongoose.Schema.Types.Mixed,
 
+    content:
+      mongoose.Schema.Types.Mixed,
+
     notified: {
       type: Boolean,
       default: false

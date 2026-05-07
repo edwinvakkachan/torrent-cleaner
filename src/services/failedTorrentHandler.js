@@ -61,6 +61,13 @@ async function blocklistAndRemove(torrent) {
   );
 }
 
+function allowUnhealthyRemoval() {
+  return (
+    process.env.ALLOW_UNHEALTHY_REMOVAL ===
+    "true"
+  );
+}
+
 async function writeCleanupLog({
   torrent,
   action,
@@ -96,10 +103,15 @@ export async function processFailedTorrent(
 ) {
   const startedAt = new Date();
 
-  if (!isSafeToRemoveFailedTorrent(torrent)) {
+  if (
+    !isSafeToRemoveFailedTorrent(torrent, {
+      allowUnhealthyRemoval:
+        allowUnhealthyRemoval()
+    })
+  ) {
     torrent.status = "SKIPPED";
     torrent.lastError =
-      "Protected from removal because it is not an incomplete download";
+      "Protected from removal because only unsafe content is auto-removed by default";
     torrent.blocklist = {
       ...(torrent.blocklist ?? {}),
       skippedAt: startedAt,
@@ -114,9 +126,10 @@ export async function processFailedTorrent(
       action,
       status: "SKIPPED",
       message:
-        "Skipped removal because torrent is not an incomplete download",
+        "Skipped removal because torrent is not unsafe content",
       relatedData: {
         qbit: torrent.qbit,
+        content: torrent.content,
         blocklist: torrent.blocklist
       }
     });
@@ -151,6 +164,7 @@ export async function processFailedTorrent(
         "Blocklisted and removed from download client through Arr",
       relatedData: {
         arr,
+        content: torrent.content,
         blocklist
       }
     });
@@ -176,6 +190,7 @@ export async function processFailedTorrent(
       status: "FAILED",
       error: err.message,
       relatedData: {
+        content: torrent.content,
         blocklist: torrent.blocklist
       }
     });

@@ -63,8 +63,24 @@ export function isUnhealthyDownload(
 }
 
 export function isSafeToRemoveFailedTorrent(
-  failedTorrent
+  failedTorrent,
+  {
+    allowUnhealthyRemoval = false
+  } = {}
 ) {
+  if (
+    failedTorrent.content?.isInvalid ===
+      true ||
+    failedTorrent.qbit?.content
+      ?.isInvalid === true
+  ) {
+    return true;
+  }
+
+  if (!allowUnhealthyRemoval) {
+    return false;
+  }
+
   if (!failedTorrent.qbit) {
     return false;
   }

@@ -30,6 +30,22 @@ export async function getTorrents() {
   return res.data;
 }
 
+export async function getTorrentFiles(hash) {
+  const res = await axios.get(
+    `${process.env.QB_URL}/api/v2/torrents/files`,
+    {
+      headers: {
+        Cookie: cookie
+      },
+      params: {
+        hash
+      }
+    }
+  );
+
+  return res.data;
+}
+
 export async function deleteTorrent(hash) {
   await axios.post(
     `${process.env.QB_URL}/api/v2/torrents/delete`,
