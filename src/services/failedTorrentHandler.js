@@ -5,6 +5,10 @@ import {
 } from "../utils/downloadEligibility.js";
 
 import {
+  matchingIgnoredTags
+} from "../utils/ignoredTags.js";
+
+import {
   blocklistAndRemoveRadarr
 } from "./radarrService.js";
 
@@ -102,6 +106,8 @@ export async function processFailedTorrent(
   action
 ) {
   const startedAt = new Date();
+  const ignoredTagMatches =
+    matchingIgnoredTags(torrent);
 
   if (
     !isSafeToRemoveFailedTorrent(torrent, {
@@ -111,7 +117,9 @@ export async function processFailedTorrent(
   ) {
     torrent.status = "SKIPPED";
     torrent.lastError =
-      "Protected from removal because only unsafe content is auto-removed by default";
+      ignoredTagMatches.length > 0
+        ? `Ignored because torrent has tag: ${ignoredTagMatches.join(", ")}`
+        : "Protected from removal because only unsafe content is auto-removed by default";
     torrent.blocklist = {
       ...(torrent.blocklist ?? {}),
       skippedAt: startedAt,
@@ -126,10 +134,14 @@ export async function processFailedTorrent(
       action,
       status: "SKIPPED",
       message:
-        "Skipped removal because torrent is not unsafe content",
+        ignoredTagMatches.length > 0
+          ? "Skipped removal because torrent has an ignored tag"
+          : "Skipped removal because torrent is not unsafe content",
       relatedData: {
         qbit: torrent.qbit,
         content: torrent.content,
+        ignoredTags:
+          ignoredTagMatches,
         blocklist: torrent.blocklist
       }
     });

@@ -1,3 +1,7 @@
+import {
+  hasIgnoredTag
+} from "./ignoredTags.js";
+
 const DOWNLOAD_STATES = new Set([
   "downloading",
   "stalledDL",
@@ -68,6 +72,10 @@ export function isSafeToRemoveFailedTorrent(
     allowUnhealthyRemoval = false
   } = {}
 ) {
+  if (hasIgnoredTag(failedTorrent)) {
+    return false;
+  }
+
   if (
     failedTorrent.content?.isInvalid ===
       true ||

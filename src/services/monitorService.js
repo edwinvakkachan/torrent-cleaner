@@ -20,6 +20,10 @@ import {
   classifyTorrentContent
 } from "../utils/mediaContent.js";
 
+import {
+  matchingIgnoredTags
+} from "../utils/ignoredTags.js";
+
 function unixDate(value) {
   return value
     ? new Date(value * 1000)
@@ -81,11 +85,24 @@ export default async function monitor() {
     const score =
       healthScore(torrent);
 
-    const files =
-      await getFiles(torrent.hash);
+    const ignoredTagMatches =
+      matchingIgnoredTags(torrent);
 
     const content =
-      classifyTorrentContent(files);
+      ignoredTagMatches.length > 0
+        ? {
+            isInvalid: false,
+            reason: "Ignored by tag",
+            ignoredTags:
+              ignoredTagMatches,
+            blockedFiles: [],
+            videoFiles: [],
+            files: [],
+            scannedAt: new Date()
+          }
+        : classifyTorrentContent(
+            await getFiles(torrent.hash)
+          );
 
     const qbit =
       qbitData(torrent, content);
@@ -123,6 +140,29 @@ export default async function monitor() {
         upsert: true
       }
     );
+
+    if (ignoredTagMatches.length > 0) {
+      const exists =
+        await FailedTorrent.findOne({
+          hash: torrent.hash
+        });
+
+      if (
+        exists &&
+        exists.status !== "SUCCESS"
+      ) {
+        exists.status = "SKIPPED";
+        exists.reason = "Ignored torrent tag";
+        exists.lastError =
+          `Ignored because torrent has tag: ${ignoredTagMatches.join(", ")}`;
+        exists.qbit = qbit;
+        exists.content = content;
+
+        await exists.save();
+      }
+
+      continue;
+    }
 
     const unsafeContent =
       content.isInvalid;
