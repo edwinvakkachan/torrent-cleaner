@@ -55,7 +55,8 @@ function fileData(file) {
 }
 
 export function classifyTorrentContent(
-  files = []
+  files = [],
+  torrent = {}
 ) {
   const normalizedFiles =
     files.map(fileData);
@@ -73,6 +74,9 @@ export function classifyTorrentContent(
         file.extension
       )
     );
+
+  const isMetaDL =
+    torrent.state === "metaDL";
 
   if (blockedFiles.length > 0) {
     return {
@@ -100,11 +104,26 @@ export function classifyTorrentContent(
     };
   }
 
+  // NEW: remove torrents stuck in metadata download
+  if (
+    normalizedFiles.length === 0 &&
+    isMetaDL
+  ) {
+    return {
+      isInvalid: true,
+      reason: "Metadata download failed",
+      blockedFiles,
+      videoFiles,
+      files: normalizedFiles,
+      scannedAt: new Date()
+    };
+  }
+
   return {
     isInvalid: false,
     reason:
       normalizedFiles.length === 0
-        ? "No files available"
+        ? "No files available yet"
         : "Video content found",
     blockedFiles,
     videoFiles,

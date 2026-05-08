@@ -101,7 +101,8 @@ export default async function monitor() {
             scannedAt: new Date()
           }
         : classifyTorrentContent(
-            await getFiles(torrent.hash)
+            await getFiles(torrent.hash),
+            torrent
           );
 
     const qbit =
