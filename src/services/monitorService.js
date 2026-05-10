@@ -253,12 +253,21 @@ export default async function monitor() {
       !unhealthyDownload
     ) {
 
-      await FailedTorrent.deleteOne({
-        hash: torrent.hash,
-        status: {
-          $ne: "SUCCESS"
-        }
-      });
+await FailedTorrent.updateOne(
+  {
+    hash: torrent.hash,
+    status: {
+      $ne: "SUCCESS"
+    }
+  },
+  {
+    $set: {
+      status: "RECOVERED",
+      recoveredAt: new Date(),
+      lastError: undefined
+    }
+  }
+);
 
       continue;
     }

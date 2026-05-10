@@ -1,9 +1,12 @@
+// src/server.js
+
 import express from "express";
-import cron from "node-cron";
 
 import dotenv from "dotenv";
 dotenv.config();
+
 import { loginQB } from "./services/qbService.js";
+
 import connectDB from "./config/db.js";
 
 import monitorJob from "./jobs/monitorJob.js";
@@ -15,6 +18,7 @@ const app = express();
 app.use(express.json());
 
 await connectDB();
+
 await loginQB();
 
 monitorJob();
@@ -28,5 +32,7 @@ app.get("/", (req, res) => {
 });
 
 app.listen(process.env.PORT, () => {
-  console.log(`Server running on ${process.env.PORT}`);
+  console.log(
+    `Server running on ${process.env.PORT}`
+  );
 });
