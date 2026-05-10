@@ -1,3 +1,5 @@
+// src/utils/mediaContent.js
+
 import path from "path";
 
 const VIDEO_EXTENSIONS = new Set([
@@ -55,8 +57,7 @@ function fileData(file) {
 }
 
 export function classifyTorrentContent(
-  files = [],
-  torrent = {}
+  files = []
 ) {
   const normalizedFiles =
     files.map(fileData);
@@ -74,9 +75,6 @@ export function classifyTorrentContent(
         file.extension
       )
     );
-
-  const isMetaDL =
-    torrent.state === "metaDL";
 
   if (blockedFiles.length > 0) {
     return {
@@ -97,21 +95,6 @@ export function classifyTorrentContent(
     return {
       isInvalid: true,
       reason: "No video files found",
-      blockedFiles,
-      videoFiles,
-      files: normalizedFiles,
-      scannedAt: new Date()
-    };
-  }
-
-  // NEW: remove torrents stuck in metadata download
-  if (
-    normalizedFiles.length === 0 &&
-    isMetaDL
-  ) {
-    return {
-      isInvalid: true,
-      reason: "Metadata download failed",
       blockedFiles,
       videoFiles,
       files: normalizedFiles,

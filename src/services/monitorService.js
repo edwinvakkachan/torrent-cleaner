@@ -78,6 +78,7 @@ function qbitData(
 }
 
 export default async function monitor() {
+
   const torrents =
     await getTorrents();
 
@@ -104,7 +105,7 @@ export default async function monitor() {
     let metaCount =
       existing?.metaCount ?? 0;
 
-    // slow speed counter
+    // slow speed tracking
     if (
       torrent.progress < 1 &&
       torrent.dlspeed < minSpeed
@@ -114,14 +115,14 @@ export default async function monitor() {
       slowCount = 0;
     }
 
-    // stalled counter
+    // stalled tracking
     if (torrent.state === "stalledDL") {
       stalledCount++;
     } else {
       stalledCount = 0;
     }
 
-    // zero seed counter
+    // zero seeds tracking
     if (
       torrent.progress < 1 &&
       torrent.num_seeds === 0
@@ -131,7 +132,7 @@ export default async function monitor() {
       zeroSeedCount = 0;
     }
 
-    // metadata stuck counter
+    // metadata timeout tracking
     if (torrent.state === "metaDL") {
       metaCount++;
     } else {
@@ -211,6 +212,7 @@ export default async function monitor() {
     );
 
     if (ignoredTagMatches.length > 0) {
+
       const exists =
         await FailedTorrent.findOne({
           hash: torrent.hash
@@ -242,6 +244,24 @@ export default async function monitor() {
 
     const unsafeContent =
       content.isInvalid;
+
+    // IMPORTANT FIX:
+    // remove old failed records
+    // if torrent becomes healthy again
+    if (
+      !unsafeContent &&
+      !unhealthyDownload
+    ) {
+
+      await FailedTorrent.deleteOne({
+        hash: torrent.hash,
+        status: {
+          $ne: "SUCCESS"
+        }
+      });
+
+      continue;
+    }
 
     if (
       unsafeContent ||
@@ -322,6 +342,7 @@ export default async function monitor() {
         failedTorrent.notified === false &&
         failedTorrent.retries === 0
       ) {
+
         await processFailedTorrent(
           failedTorrent,
           unsafeContent
