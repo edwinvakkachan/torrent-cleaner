@@ -32,6 +32,16 @@ const torrentSchema = new mongoose.Schema({
     default: 0
   },
 
+  zeroSeedCount: {
+    type: Number,
+    default: 0
+  },
+
+  metaCount: {
+    type: Number,
+    default: 0
+  },
+
   lastSeen: Date
 });
 

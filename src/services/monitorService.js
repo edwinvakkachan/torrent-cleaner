@@ -1,3 +1,5 @@
+// src/services/monitorService.js
+
 import Torrent from "../models/Torrent.js";
 import FailedTorrent from "../models/FailedTorrent.js";
 
@@ -11,10 +13,6 @@ import {
 } from "./failedTorrentHandler.js";
 
 import healthScore from "../utils/healthScore.js";
-
-import {
-  isUnhealthyDownload
-} from "../utils/downloadEligibility.js";
 
 import {
   classifyTorrentContent
@@ -73,6 +71,8 @@ function qbitData(
       unixDate(torrent.completion_on),
     ratio: torrent.ratio,
     availability: torrent.availability,
+    dlspeed: torrent.dlspeed,
+    seeds: torrent.num_seeds,
     content
   };
 }
@@ -81,9 +81,70 @@ export default async function monitor() {
   const torrents =
     await getTorrents();
 
+  const minSpeed = Number(
+    process.env.MIN_SPEED ?? 200000
+  );
+
   for (const torrent of torrents) {
+
+    const existing =
+      await Torrent.findOne({
+        hash: torrent.hash
+      });
+
+    let slowCount =
+      existing?.slowCount ?? 0;
+
+    let stalledCount =
+      existing?.stalledCount ?? 0;
+
+    let zeroSeedCount =
+      existing?.zeroSeedCount ?? 0;
+
+    let metaCount =
+      existing?.metaCount ?? 0;
+
+    // slow speed counter
+    if (
+      torrent.progress < 1 &&
+      torrent.dlspeed < minSpeed
+    ) {
+      slowCount++;
+    } else {
+      slowCount = 0;
+    }
+
+    // stalled counter
+    if (torrent.state === "stalledDL") {
+      stalledCount++;
+    } else {
+      stalledCount = 0;
+    }
+
+    // zero seed counter
+    if (
+      torrent.progress < 1 &&
+      torrent.num_seeds === 0
+    ) {
+      zeroSeedCount++;
+    } else {
+      zeroSeedCount = 0;
+    }
+
+    // metadata stuck counter
+    if (torrent.state === "metaDL") {
+      metaCount++;
+    } else {
+      metaCount = 0;
+    }
+
     const score =
-      healthScore(torrent);
+      healthScore(torrent, {
+        slowCount,
+        stalledCount,
+        zeroSeedCount,
+        metaCount
+      });
 
     const ignoredTagMatches =
       matchingIgnoredTags(torrent);
@@ -101,8 +162,7 @@ export default async function monitor() {
             scannedAt: new Date()
           }
         : classifyTorrentContent(
-            await getFiles(torrent.hash),
-            torrent
+            await getFiles(torrent.hash)
           );
 
     const qbit =
@@ -135,6 +195,14 @@ export default async function monitor() {
 
         qbit,
 
+        slowCount,
+
+        stalledCount,
+
+        zeroSeedCount,
+
+        metaCount,
+
         lastSeen: new Date()
       },
       {
@@ -165,19 +233,21 @@ export default async function monitor() {
       continue;
     }
 
+    // persistent unhealthy detection
+    const unhealthyDownload =
+      slowCount >= 6 ||
+      stalledCount >= 6 ||
+      zeroSeedCount >= 12 ||
+      metaCount >= 12;
+
     const unsafeContent =
       content.isInvalid;
-
-    const unhealthyDownload =
-      isUnhealthyDownload(
-        torrent,
-        Number(process.env.MIN_SPEED ?? 200000)
-      );
 
     if (
       unsafeContent ||
       unhealthyDownload
     ) {
+
       const exists =
         await FailedTorrent.findOne({
           hash: torrent.hash
@@ -186,36 +256,48 @@ export default async function monitor() {
       const reason =
         unsafeContent
           ? "Unsafe torrent content"
-          : "Unhealthy torrent";
+          : `Unhealthy torrent | slow:${slowCount} stalled:${stalledCount} noSeeds:${zeroSeedCount} meta:${metaCount}`;
 
       let failedTorrent;
 
       if (exists) {
+
         const wasUnsafe =
           exists.content?.isInvalid ===
           true;
 
         exists.state = torrent.state;
+
         exists.reason = reason;
+
         exists.rrType =
           rrTypeFor(torrent);
+
         exists.qbit = qbit;
+
         exists.content = content;
 
         if (
-          unsafeContent &&
-          !wasUnsafe &&
           exists.status !== "SUCCESS"
         ) {
           exists.status = "PENDING";
           exists.notified = false;
+        }
+
+        if (
+          unsafeContent &&
+          !wasUnsafe
+        ) {
           exists.retries = 0;
           exists.lastError = undefined;
         }
 
         await exists.save();
+
         failedTorrent = exists;
+
       } else {
+
         failedTorrent =
           await FailedTorrent.create({
             hash: torrent.hash,
@@ -224,8 +306,7 @@ export default async function monitor() {
 
             state: torrent.state,
 
-            reason:
-              reason,
+            reason,
 
             rrType:
               rrTypeFor(torrent),
@@ -237,14 +318,15 @@ export default async function monitor() {
       }
 
       if (
-        unsafeContent &&
         failedTorrent.status === "PENDING" &&
         failedTorrent.notified === false &&
         failedTorrent.retries === 0
       ) {
         await processFailedTorrent(
           failedTorrent,
-          "content-scan"
+          unsafeContent
+            ? "content-scan"
+            : "health-check"
         );
       }
     }
