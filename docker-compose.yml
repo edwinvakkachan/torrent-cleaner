@@ -3,8 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+
     container_name: torrentcleaner
     restart: unless-stopped
+
     environment:
       NODE_ENV: production
       PORT: ${PORT:-3000}
@@ -20,27 +22,14 @@ services:
       MAX_RETRIES: ${MAX_RETRIES:-5}
       IGNORED_TAGS: ${IGNORED_TAGS:-predvd,malayalam,malayalm}
       ALLOW_UNHEALTHY_REMOVAL: ${ALLOW_UNHEALTHY_REMOVAL:-false}
+
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
+
     volumes:
       - torrent-cleaner-data:/app/data
       - torrent-cleaner-logs:/app/logs
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO- http://127.0.0.1:${PORT:-3000}/ >/dev/null || exit 1"
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
 
-volumes:
-  torrent-cleaner-data:
-    name: torrent-cleaner-data
-  torrent-cleaner-logs:
-    name: torrent-cleaner-logs
     dns:
       - 1.1.1.1
       - 1.0.0.1
@@ -58,6 +47,24 @@ volumes:
       options:
         max-size: "10m"
         max-file: "3"
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:${PORT:-3000}/ >/dev/null || exit 1"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  torrent-cleaner-data:
+    name: torrent-cleaner-data
+
+  torrent-cleaner-logs:
+    name: torrent-cleaner-logs
 
 networks:
   shared_network:
